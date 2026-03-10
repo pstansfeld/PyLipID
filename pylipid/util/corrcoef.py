@@ -28,10 +28,12 @@ def sparse_corrcoef(A, B=None):
         A = sparse.vstack((A, B), format='csr')
     A = A.astype(np.float64)
     n = A.shape[1]
-    # Compute the covariance matrix
-    rowsum = A.sum(1)
-    centering = rowsum.dot(rowsum.T.conjugate()) / n
-    C = (A.dot(A.T.conjugate()) - centering) / (n - 1)
+    # Compute the covariance matrix.
+    # Use explicit dense conversion to avoid numpy.matrix deprecation and
+    # version-dependent sparse-dense arithmetic (scipy >= 1.14 / numpy >= 1.25).
+    rowsum = np.asarray(A.sum(1)).flatten()          # shape (n_rows,) ndarray
+    centering = np.outer(rowsum, rowsum) / n         # explicit outer product
+    C = (np.asarray(A.dot(A.T.conjugate()).todense()) - centering) / (n - 1)
     # The correlation coefficients are given by
     # C_{i,j} / sqrt(C_{i} * C_{j})
     d = np.diag(C)

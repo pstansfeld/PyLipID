@@ -19,8 +19,9 @@
 import os
 from collections import defaultdict
 from itertools import product
-import community
 import networkx as nx
+from networkx.algorithms.community import louvain_communities
+from networkx.algorithms.community.quality import modularity as louvain_modularity
 import numpy as np
 import pandas as pd
 import mdtraj as md
@@ -81,19 +82,14 @@ def get_node_list(corrcoef, threshold=4):
     .. [2] Newman, M. E. J., Analysis of weighted networks. Physical Review E 2004, 70 (5), 056131.
 
     """
-    # TODO: check negative values in corrcoef_matrix. Come up with better solutions.
     corrcoef[corrcoef < 0.0] = 0.0 # network edge can't take negative values. Residues with
                                    # negative correlationsare are forced to separate to different binding sites.
     graph = nx.Graph(corrcoef)
-    partition = community.best_partition(graph, weight='weight')
-    values = [partition.get(node) for node in graph.nodes()]
-    node_list = []
-    for value in range(max(values)):
-        nodes = [k for k, v in partition.items() if v == value]
-        if len(nodes) >= threshold:
-            node_list.append(nodes)
+    # Use networkx's built-in Louvain (networkx >= 2.6). seed fixes randomness for reproducibility.
+    communities = louvain_communities(graph, weight='weight', seed=42)
+    node_list = [sorted(c) for c in communities if len(c) >= threshold]
     if len(node_list) > 0:
-        modularity = community.modularity(partition, graph)
+        modularity = louvain_modularity(graph, communities, weight='weight')
     else:
         modularity = None
     return node_list, modularity
@@ -334,6 +330,7 @@ def calculate_scores(dist_matrix, kde_bw=0.15, pca_component=0.90, score_weights
 
     except ValueError:
         print("Pose generation error -- possibly due to insufficient number of binding event.")
+        return np.array([])
 
 
 def write_bound_poses(pose_traj, pose_indices, save_dir, pose_prefix="BoundPose", pose_format="pdb"):

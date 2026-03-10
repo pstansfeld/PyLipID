@@ -220,7 +220,7 @@ def _curve_fitting(survival_func, delta_t_list, initial_guess):
     survival_rates = np.nan_to_num([survival_func[delta_t] for delta_t in delta_t_list]) # y
     try:
         popt, pcov = curve_fit(_bi_expo, np.array(delta_t_list), np.array(survival_rates), p0=initial_guess, maxfev=100000)
-        n_fitted = _bi_expo(np.array(delta_t_list, dtype=np.float128), *popt)
+        n_fitted = _bi_expo(np.array(delta_t_list, dtype=np.longdouble), *popt)
         r_squared = 1 - np.sum((np.nan_to_num(n_fitted) -
                                 np.nan_to_num(survival_rates))**2)/np.sum((survival_rates - np.mean(survival_rates))**2)
         ks = [abs(k) for k in popt[:2]]

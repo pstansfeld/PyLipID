@@ -561,7 +561,7 @@ class LipidInteraction:
                                            if len(self._lipid_count[residue_id]) > 0 else 0
                                            for residue_id in self._protein_residue_id]
         if len(selected_residue_id) == 1:
-            self._lipid_count[residue_id]
+            return self._lipid_count[residue_id]
         else:
             return [self._lipid_count[residue_id] for residue_id in selected_residue_id]
 
@@ -664,7 +664,7 @@ class LipidInteraction:
         self._check_calculation("Duration", self.compute_residue_duration)
 
         if plot_data:
-            koff_dir = check_dir(save_dir, "Reisidue_koffs_{}".format(self._lipid)) if save_dir is not None \
+            koff_dir = check_dir(save_dir, "Residue_koffs_{}".format(self._lipid)) if save_dir is not None \
                 else check_dir(self._save_dir, "Residue_koffs_{}".format(self._lipid))
         if len(set(self._residue_list)) != len(self._residue_list):
             residue_name_set = ["{}_ResidueID{}".format(residue, residue_id) for residue, residue_id in
@@ -1327,8 +1327,8 @@ class LipidInteraction:
 
         pose_dir = check_dir(save_dir, "Bound_Poses_{}".format(self._lipid)) if save_dir is not None \
             else check_dir(self._save_dir, "Bound_Poses_{}".format(self._lipid))
-        if "Binding Site RMSD" in self.dataset.columns:
-            pose_rmsd_per_residue = self.dataset.columns["Binding Site Pose RMSD"]
+        if "Binding Site Pose RMSD" in self.dataset.columns:
+            pose_rmsd_per_residue = self.dataset["Binding Site Pose RMSD"].values
         else:
             pose_rmsd_per_residue = np.zeros(self._nresi_per_protein)
         if binding_site_id is not None:
@@ -1645,7 +1645,7 @@ class LipidInteraction:
         """
         script_dir = check_dir(save_dir) if save_dir is not None else \
             check_dir(os.path.join(self._save_dir, "Dataset_{}".format(self._lipid)))
-        data_fname = os.path.join(script_dir, "Dataset.csv".format(self._lipid))
+        data_fname = os.path.join(script_dir, "Dataset.csv")
         if not os.path.isfile(data_fname):
             self.dataset.to_csv(data_fname, index=False, header=True)
         write_pymol_script(os.path.join(script_dir, "show_binding_site_info.py"), pdb_file, data_fname,
@@ -2008,4 +2008,3 @@ class LipidInteraction:
             calculation(*args, **kwargs)
             print("Finished the calculation of {}.".format(item))
             print("#" * 60)
-

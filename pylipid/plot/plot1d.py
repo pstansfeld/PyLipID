@@ -274,7 +274,7 @@ def plot_binding_site_data(data, fig_fn, ylabel=None, title=None, fig_close=Fals
     if title is None:
         title = ""
 
-    color_set = _cycle(plt.get_cmap("tab10").colors)
+    color_set = _cycle(plt.cm.tab10.colors)
     plt.rcParams["font.size"] = 10
     plt.rcParams["font.weight"] = "bold"
 
@@ -346,7 +346,7 @@ def plot_surface_area(surface_area, fig_fn, timeunit=None, fig_close=False):
     """
     from itertools import cycle as _cycle
 
-    color_set = _cycle(plt.get_cmap("tab10").colors)
+    color_set = _cycle(plt.cm.tab10.colors)
     plt.rcParams["font.size"] = 10
     plt.rcParams["font.weight"] = "normal"
 

@@ -1,10 +1,9 @@
-
 ==========================================================
 PyLipID - A Python Package For Lipid Interactions Analysis
 ==========================================================
 
-.. image:: https://travis-ci.com/wlsong/PyLipID.svg?branch=master
-   :target: https://travis-ci.com/github/wlsong/PyLipID
+.. image:: https://github.com/pstansfeld/PyLipID/actions/workflows/ci.yml/badge.svg
+   :target: https://github.com/pstansfeld/PyLipID/actions/workflows/ci.yml
 .. image:: https://img.shields.io/pypi/v/PyLipID
    :target: https://pypi.org/project/pylipid/
 
@@ -37,7 +36,7 @@ We recommend installing PyLipID using the package installer `pip`:
 Alternatively, PyLipID can be installed from the source code. The package is available for
 download on Github via:
 
-``git clone https://github.com/wlsong/PyLipID``
+``git clone https://github.com/pstansfeld/PyLipID``
 
 Once the source code is downloaded, enter the source code directory and install the package as follow:
 
