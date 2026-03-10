@@ -364,15 +364,31 @@ class LipidInteraction:
                     "Trajectory {} contains {} residues whereas trajectory {} contains {} residues".format(
                         traj_idx, len(traj_info["protein_residue_id"]), traj_idx - 1, len(self._protein_residue_id))
             ncol_per_protein = len(traj_info["lipid_residue_atomid_list"]) * traj.n_frames
+            # Pre-flatten all lipid atom indices and build a boundary index so we can
+            # issue ONE md.compute_distances call per residue (instead of n_lipids calls).
+            flat_lipid_atoms = np.concatenate(traj_info["lipid_residue_atomid_list"])
+            lipid_sizes = np.array([len(a) for a in traj_info["lipid_residue_atomid_list"]])
+            lipid_boundaries = np.concatenate([[0], np.cumsum(lipid_sizes)])
+            n_lipids = len(traj_info["lipid_residue_atomid_list"])
             for protein_idx in np.arange(self._nprot, dtype=int):
-
                 for residue_id, residue_atom_indices in enumerate(
-                        traj_info["protein_residue_atomid_list"][protein_idx]):
-                    # calculate interaction per residue
-                    dist_matrix = np.array([np.min(
-                        md.compute_distances(traj, np.array(list(product(residue_atom_indices, lipid_atom_indices))),
-                                             periodic=True, opt=True),
-                        axis=1) for lipid_atom_indices in traj_info["lipid_residue_atomid_list"]])
+                        tqdm(traj_info["protein_residue_atomid_list"][protein_idx],
+                             desc="  Traj {:d} prot {:d} residues".format(traj_idx, protein_idx),
+                             leave=False)):
+                    # Single compute_distances call for all lipid atoms at once.
+                    # Shape: (n_frames, n_residue_atoms * n_flat_lipid_atoms)
+                    all_pairs = np.array(list(product(residue_atom_indices, flat_lipid_atoms)))
+                    all_dists = md.compute_distances(traj, all_pairs, periodic=True, opt=True)
+                    # all_dists shape: (n_frames, n_res_atoms * n_flat_lipid_atoms)
+                    # Reduce to (n_frames, n_flat_lipid_atoms) by taking min over residue atoms
+                    n_res_atoms = len(residue_atom_indices)
+                    n_flat = len(flat_lipid_atoms)
+                    # reshape: (n_frames, n_res_atoms, n_flat_lipid_atoms) → min over axis 1
+                    per_atom_dists = all_dists.reshape(traj.n_frames, n_res_atoms, n_flat).min(axis=1)
+                    # (n_frames, n_flat_lipid_atoms) → per lipid min using boundaries
+                    # np.minimum.reduceat operates along axis=1 (columns = lipid atoms)
+                    dist_matrix = np.minimum.reduceat(per_atom_dists, lipid_boundaries[:-1], axis=1).T
+                    # dist_matrix shape: (n_lipids, n_frames) — same as before
                     contact_low, frame_id_set_low, lipid_id_set_low = cal_contact_residues(dist_matrix, self._cutoffs[0])
                     contact_high, _, _ = cal_contact_residues(dist_matrix, self._cutoffs[1])
                     self._contact_residues_high[residue_id].append(contact_high)
