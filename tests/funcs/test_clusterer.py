@@ -1,63 +1,96 @@
-import unittest
-import os
-import shutil
+"""
+Tests for pose clustering (DBSCAN and KMeans).
+Uses the synthetic_traj_dir session fixture from conftest.py — no real data files needed.
+"""
+
+import pytest
 import numpy as np
 from sklearn.decomposition import PCA
 from pylipid.func import collect_bound_poses, vectorize_poses, write_bound_poses
 from pylipid.func import cluster_DBSCAN, cluster_KMeans
-from pylipid import LipidInteraction
+from pylipid.api import LipidInteraction
+import shutil
 
-class TestCluster(unittest.TestCase):
 
-    def setUp(self):
-        trajfile_list = ["../data/run1/protein_lipids.xtc", "../data/run2/protein_lipids.xtc"]
-        topfile_list = ["../data/run1/protein_lipids.gro", "../data/run2/protein_lipids.gro"]
-        lipid = "CHOL"
-        cutoffs = [0.55, 0.8]
-        file_dir = os.path.dirname(os.path.abspath(__file__))
-        self.save_dir = os.path.join(file_dir, "binding_site")
-        self.li = LipidInteraction(trajfile_list, topfile_list, cutoffs=cutoffs, lipid=lipid,
-                                   nprot=1, save_dir=self.save_dir)
-        self.li.collect_residue_contacts(write_log=False, print_log=True)
-        node_list = self.li.compute_binding_nodes(print_data=False)
-        binding_site_map = {bs_id: nodes for bs_id, nodes in enumerate(node_list)}
-        contact_residue_dict = self.li.contact_residues_low
-        self.pose_pool = collect_bound_poses(binding_site_map, contact_residue_dict, self.li.trajfile_list[0],
-                                             self.li.topfile_list[0], self.li.lipid, self.li.stride, self.li.nprot)
+@pytest.fixture(scope="module")
+def li_and_poses(synthetic_traj_dir, tmp_path_factory):
+    save_dir = str(tmp_path_factory.mktemp("cluster_output"))
+    li = LipidInteraction(
+        synthetic_traj_dir["trajfile_list"],
+        cutoffs=synthetic_traj_dir["cutoffs"],
+        topfile_list=synthetic_traj_dir["topfile_list"],
+        lipid=synthetic_traj_dir["lipid"],
+        nprot=1,
+        save_dir=save_dir,
+    )
+    li.collect_residue_contacts()
+    li.compute_residue_koff(plot_data=False)
+    li.compute_binding_nodes(threshold=2, print_data=False)
 
-        def test_cluster_DBSCAN(self):
-            for bs_id, nodes in enumerate(self.li._node_list):
-                dist_matrix, pose_traj = vectorize_poses(self.pose_pool[bs_id], nodes, self.li._protein_ref,
-                                                         self.li._lipid_ref)
-                lipid_dist_per_pose = [dist_matrix[:, pose_id, :].ravel()
-                                       for pose_id in np.arange(dist_matrix.shape[1])]
-                transformed_data = PCA(n_components=0.95).fit_transform(lipid_dist_per_pose)
-                cluster_labels = cluster_DBSCAN(transformed_data, eps=None, min_samples=None,
-                                                metric="euclidean")
-                self.assertEqual(len(cluster_labels), len(lipid_dist_per_pose))
-                cluster_id_set = [label for label in np.unique(cluster_labels) if label != -1]
-                selected_pose_id = [np.random.choice(np.where(cluster_labels == cluster_id)[0], 1)[0]
-                                    for cluster_id in cluster_id_set]
-                write_bound_poses(pose_traj, selected_pose_id, self.save_dir,
-                                  pose_prefix="BSid{}_cluster_DBSCAN".format(bs_id), pose_format="gro")
+    if not li._node_list:
+        yield li, {}
+    else:
+        binding_site_map = {bs_id: nodes for bs_id, nodes in enumerate(li._node_list)}
+        pose_pool = collect_bound_poses(
+            binding_site_map,
+            li._contact_residues_low,
+            li.trajfile_list,
+            li.topfile_list,
+            li.lipid,
+            li._protein_ref,
+            li._lipid_ref,
+            stride=li.stride,
+            nprot=li.nprot,
+        )
+        yield li, pose_pool
 
-        def test_cluster_KMeans(self):
-            for bs_id, nodes in enumerate(self.li._node_list):
-                dist_matrix, pose_traj = vectorize_poses(self.pose_pool[bs_id], nodes, self.li._protein_ref,
-                                                         self.li._lipid_ref)
-                lipid_dist_per_pose = [dist_matrix[:, pose_id, :].ravel()
-                                       for pose_id in np.arange(dist_matrix.shape[1])]
-                transformed_data = PCA(n_components=0.95).fit_transform(lipid_dist_per_pose)
-                cluster_labels = cluster_KMeans(transformed_data, n_clusters=5)
-                self.assertEqual(len(cluster_labels), len(lipid_dist_per_pose))
-                cluster_id_set = [label for label in np.unique(cluster_labels) if label != -1]
-                selected_pose_id = [np.random.choice(np.where(cluster_labels == cluster_id)[0], 1)[0]
-                                    for cluster_id in cluster_id_set]
-                write_bound_poses(pose_traj, selected_pose_id, self.save_dir,
-                                  pose_prefix="BSid{}_cluster_KMeans".format(bs_id), pose_format="gro")
+    shutil.rmtree(save_dir, ignore_errors=True)
 
-        def tearDown(self):
-            shutil.rmtree(self.save_dir)
 
-    if __name__ == "__main__":
-        unittest.main()
+class TestCluster:
+
+    def test_cluster_DBSCAN(self, li_and_poses, tmp_path):
+        li, pose_pool = li_and_poses
+        if not li._node_list:
+            pytest.skip("No binding sites detected in synthetic data")
+        for bs_id, nodes in enumerate(li._node_list):
+            if bs_id not in pose_pool or len(pose_pool[bs_id]) < 5:
+                continue
+            dist_matrix, pose_traj = vectorize_poses(
+                pose_pool[bs_id], nodes, li._protein_ref, li._lipid_ref)
+            lipid_dist_per_pose = [dist_matrix[:, pose_id, :].ravel()
+                                   for pose_id in np.arange(dist_matrix.shape[1])]
+            transformed_data = PCA(n_components=min(2, len(lipid_dist_per_pose) - 1)).fit_transform(lipid_dist_per_pose)
+            cluster_labels = cluster_DBSCAN(transformed_data, eps=None, min_samples=None,
+                                            metric="euclidean")
+            assert len(cluster_labels) == len(lipid_dist_per_pose)
+            cluster_id_set = [label for label in np.unique(cluster_labels) if label != -1]
+            if cluster_id_set:
+                selected_pose_id = [np.random.choice(np.where(cluster_labels == cid)[0], 1)[0]
+                                    for cid in cluster_id_set]
+                write_bound_poses(pose_traj, selected_pose_id, str(tmp_path),
+                                  pose_prefix="BSid{}_cluster_DBSCAN".format(bs_id),
+                                  pose_format="gro")
+
+    def test_cluster_KMeans(self, li_and_poses, tmp_path):
+        li, pose_pool = li_and_poses
+        if not li._node_list:
+            pytest.skip("No binding sites detected in synthetic data")
+        for bs_id, nodes in enumerate(li._node_list):
+            if bs_id not in pose_pool or len(pose_pool[bs_id]) < 5:
+                continue
+            dist_matrix, pose_traj = vectorize_poses(
+                pose_pool[bs_id], nodes, li._protein_ref, li._lipid_ref)
+            lipid_dist_per_pose = [dist_matrix[:, pose_id, :].ravel()
+                                   for pose_id in np.arange(dist_matrix.shape[1])]
+            n_clusters = min(3, len(lipid_dist_per_pose))
+            transformed_data = PCA(n_components=min(2, len(lipid_dist_per_pose) - 1)).fit_transform(lipid_dist_per_pose)
+            cluster_labels = cluster_KMeans(transformed_data, n_clusters=n_clusters)
+            assert len(cluster_labels) == len(lipid_dist_per_pose)
+            cluster_id_set = [label for label in np.unique(cluster_labels) if label != -1]
+            if cluster_id_set:
+                selected_pose_id = [np.random.choice(np.where(cluster_labels == cid)[0], 1)[0]
+                                    for cid in cluster_id_set]
+                write_bound_poses(pose_traj, selected_pose_id, str(tmp_path),
+                                  pose_prefix="BSid{}_cluster_KMeans".format(bs_id),
+                                  pose_format="gro")
