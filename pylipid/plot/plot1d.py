@@ -360,6 +360,8 @@ def plot_surface_area(surface_area, fig_fn, timeunit=None, fig_close=False):
     row_set = list(set([ind[:2] for ind in surface_area.index]))
     row_set.sort()
     col_set = [col for col in surface_area.columns if col != "Time"]
+    if not col_set or not row_set:
+        return
     colors = [next(color_set) for dummy in col_set]
     fig, axes = plt.subplots(len(row_set), len(col_set), figsize=(len(col_set)*2.4, len(row_set)*1.6),
                              sharex=True, sharey=True)

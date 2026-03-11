@@ -1497,7 +1497,8 @@ class LipidInteraction:
             surface_area_per_residue[nodes] = surface_area_data["Binding Site {}".format(bs_id)].mean()
         self.dataset["Binding Site Surface Area"] = surface_area_per_residue
         # plot surface area
-        if plot_data:
+        _bs_cols = [c for c in surface_area_data.columns if c != "Time"]
+        if plot_data and _bs_cols:
             if save_dir is not None:
                 surface_area_dir = check_dir(save_dir)
             else:
