@@ -27,7 +27,8 @@ np.seterr(all='ignore')
 from scipy.sparse import coo_matrix
 import pandas as pd
 from tqdm import trange, tqdm
-from p_tqdm import p_map
+#from p_tqdm import p_map
+from multiprocessing import get_context
 from ..func import cal_contact_residues
 from ..func import Duration
 from ..func import cal_lipidcount, cal_occupancy
@@ -38,6 +39,20 @@ from ..plot import plot_surface_area, plot_binding_site_data
 from ..plot import plot_residue_data, plot_corrcoef, plot_residue_data_logo
 from ..util import check_dir, write_PDB, write_pymol_script, sparse_corrcoef, get_traj_info
 
+def _spawn_pmap(func, *iterables, num_cpus=None, desc=None):
+    """Parallel map using multiprocessing with 'spawn' (macOS-safe)."""
+    iterables = [list(it) for it in iterables]
+    if not iterables:
+        return []
+    n = len(iterables[0])
+    if any(len(it) != n for it in iterables):
+        raise ValueError("All iterables must have the same length")
+    if n == 0:
+        return []
+    args_iterable = list(zip(*iterables))
+    ctx = get_context("spawn")
+    with ctx.Pool(processes=num_cpus) as pool:
+        return list(tqdm(pool.starmap(func, args_iterable), total=n, desc=desc))
 
 class LipidInteraction:
     def __init__(self, trajfile_list, cutoffs=[0.475, 0.7], lipid="CHOL", topfile_list=None, lipid_atoms=None,
@@ -711,7 +726,7 @@ class LipidInteraction:
         else:
             fn_set = [False for dummy in selected_residue_id]
                 
-        returned_values = p_map(partial(calculate_koff_wrapper, t_total=t_total, timestep=timestep, nbootstrap=nbootstrap,
+        returned_values = _spawn_pmap(partial(calculate_koff_wrapper, t_total=t_total, timestep=timestep, nbootstrap=nbootstrap,
                                         initial_guess=initial_guess, plot_data=plot_data, timeunit=self._timeunit,
                                         fig_close=fig_close),
                                 [np.concatenate(self._duration[residue_id]) for residue_id in selected_residue_id],
@@ -1155,7 +1170,7 @@ class LipidInteraction:
             fn_set = [os.path.join(BS_dir, f"BS_id{bs_id}.{fig_format}") for bs_id in selected_bs_id]
         else:
             fn_set = [False for dummy in selected_bs_id]
-        returned_values = p_map(partial(calculate_koff_wrapper, t_total=t_total, timestep=timestep, nbootstrap=nbootstrap,
+        returned_values = _spawn_pmap(partial(calculate_koff_wrapper, t_total=t_total, timestep=timestep, nbootstrap=nbootstrap,
                                         initial_guess=initial_guess, plot_data=plot_data, timeunit=self._timeunit,
                                         fig_close=fig_close),
                                 [np.concatenate(self._duration_BS[bs_id]) for bs_id in selected_bs_id],
@@ -1370,7 +1385,7 @@ class LipidInteraction:
 
         if n_top_poses > 0:
             # multiprocessing wrapped under p_tqdm
-            rmsd_set = p_map(partial(analyze_pose_wrapper, protein_atom_indices=protein_atom_indices,
+            rmsd_set = _spawn_pmap(partial(analyze_pose_wrapper, protein_atom_indices=protein_atom_indices,
                                      lipid_atom_indices=lipid_atom_indices, n_top_poses=n_top_poses,
                                      pose_dir=pose_dir, atom_weights=atom_weights, kde_bw=kde_bw,
                                      pca_component=pca_component, pose_format=pose_format, n_clusters=n_clusters,
@@ -1479,7 +1494,7 @@ class LipidInteraction:
         selected_bs_id = np.atleast_1d(np.array(binding_site_id, dtype=int)) if binding_site_id is not None \
             else np.arange(len(self._node_list), dtype=int)
         selected_bs_id_map = {bs_id: self._node_list[bs_id] for bs_id in selected_bs_id}
-        returned_values = p_map(partial(calculate_surface_area_wrapper, binding_site_map=selected_bs_id_map,
+        returned_values = _spawn_pmap(partial(calculate_surface_area_wrapper, binding_site_map=selected_bs_id_map,
                                         nprot=self._nprot, timeunit=self._timeunit, stride=self._stride,
                                         dt_traj=self._dt_traj, radii=radii_book), self._trajfile_list,
                                 self._topfile_list, np.arange(len(self._trajfile_list), dtype=int),
