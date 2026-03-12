@@ -38,6 +38,6 @@ def check_dir(directory=None, suffix=None, print_info=True):
     if not os.path.isdir(directory):
         os.makedirs(directory)
         if print_info:
-            print(f"Creating new directory: {path}")
+            print("Creating new directory: {}".format(path))
     return directory
 
