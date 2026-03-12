@@ -1201,132 +1201,131 @@ class LipidInteraction:
                         score_weights=None, kde_bw=0.15, pca_component=0.90, plot_rmsd=True, save_dir=None,
                         eps=None, min_samples=None, metric="euclidean",
                         fig_close=False, fig_format="pdf", num_cpus=None):
-    r"""Analyze bound poses for binding sites.
-
-    (Docstring unchanged — omitted here for brevity)
-    """
-    # Ensure required upstream steps are done
-    self._check_calculation("Binding Site ID", self.compute_binding_nodes, print_data=False)
-
-    # Where to save pose outputs
-    pose_dir = check_dir(save_dir, "Bound_Poses_{}".format(self._lipid)) if save_dir is not None \
-        else check_dir(self._save_dir, "Bound_Poses_{}".format(self._lipid))
-
-    # Initialize/extend per-residue RMSD column
-    if "Binding Site Pose RMSD" in self.dataset.columns:
-        pose_rmsd_per_residue = self.dataset["Binding Site Pose RMSD"].values
-    else:
-        pose_rmsd_per_residue = np.zeros(self._nresi_per_protein)
-
-    # Which binding sites to process
-    if binding_site_id is not None:
-        selected_bs_id = np.atleast_1d(binding_site_id)
-    else:
-        selected_bs_id = np.arange(len(self._node_list), dtype=int)
-
-    # Map of selected binding sites -> node lists
-    selected_bs_map = {bs_id: self._node_list[bs_id] for bs_id in selected_bs_id}
-
-    # --- Heartbeat: announce pose collection --------------------------------
-    print(f"[PyLipID] Gathering bound poses for analysis…")
-    print(f"[PyLipID] Binding sites to analyse: {len(selected_bs_id)}")
-
-    # Collect bound poses and metadata
-    pose_traj, pose_info = collect_bound_poses(
-        selected_bs_map,
-        self._contact_residues_low,
-        self._trajfile_list,
-        self._topfile_list,
-        self._lipid,
-        self._protein_ref,
-        self._lipid_ref,
-        stride=self._stride,
-        nprot=self._nprot
-    )
-
-    # Quick per-site pose counts (helps reassure users on large jobs)
-    for bs_id in selected_bs_id:
-        try:
-            n_poses = len(pose_traj[bs_id])
-        except Exception:
-            n_poses = 0
-        print(f"[PyLipID] - Binding Site {bs_id}: {n_poses} poses")
-
-    # Build atom index lists used by the analyzers
-    protein_atom_indices = [[atom.index for atom in residue.atoms]
-                            for residue in self._protein_ref.top.residues]
-    lipid_atom_indices = [self._protein_ref.n_atoms + atom_idx
-                          for atom_idx in np.arange(self._lipid_ref.n_atoms)]
-
-    # Atom weights (default 1.0 each; allow user override by name)
-    atom_weights = {atom_idx: 1 for atom_idx in np.arange(self._lipid_ref.n_atoms)}
-    if score_weights is not None:
-        translate = {atom_idx: score_weights[self._lipid_ref.top.atom(atom_idx).name]
-                     for atom_idx in np.arange(self._lipid_ref.n_atoms)
-                     if self._lipid_Ref.top.atom(atom_idx).name in score_weights.keys()}
-        atom_weights.update(translate)
-
-    RMSD_set = {}
-
-    # If n_top_poses == 0, we skip the heavy scoring/clustering entirely
-    if n_top_poses > 0:
-        # --- Heartbeat: announce the heavy parallel step --------------------
-        # Number of workers actually used
-        import os
-        n_workers = num_cpus if (isinstance(num_cpus, int) and num_cpus > 0) else (os.cpu_count() or 1)
-        n_workers = min(n_workers, max(1, len(selected_bs_id)))
-        print(f"[PyLipID] Starting multiprocessing for bound pose scoring/clustering… "
-              f"(sites={len(selected_bs_id)}, workers={n_workers})")
-        print(f"[PyLipID] Tip: reduce num_cpus or set n_top_poses=0 / n_clusters=0 to speed up.")
-
-        # Prepare the task closure
-        task = partial(analyze_pose_wrapper,
-                       protein_atom_indices=protein_atom_indices,
-                       lipid_atom_indices=lipid_atom_indices,
-                       n_top_poses=n_top_poses,
-                       pose_dir=pose_dir,
-                       atom_weights=atom_weights,
-                       kde_bw=kde_bw,
-                       pca_component=pca_component,
-                       pose_format=pose_format,
-                       n_clusters=n_clusters,
-                       eps=eps,
-                       min_samples=min_samples,
-                       metric=metric,
-                       trajfile_list=self._trajfile_list)
-
-        # Run in parallel with a visible tqdm progress bar
-        print("[PyLipID] Calculating binding-site koff values… this may take some time.")
-        rmsd_set = _spawn_pmap(task,
-                               selected_bs_id,
-                               [pose_traj[bs_id] for bs_id in selected_bs_id],
-                               [self._node_list[bs_id] for bs_id in selected_bs_id],
-                               [pose_info[bs_id] for bs_id in selected_bs_id],
-                               num_cpus=num_cpus,
-                               desc="ANALYZE BOUND POSES")
-
-        # Collect RMSD output per site and update per-residue RMSD column
-        for bs_id, rmsd in zip(selected_bs_id, rmsd_set):
-            RMSD_set[f"Binding Site {bs_id}"] = rmsd
-            pose_rmsd_per_residue[self._node_list[bs_id]] = np.mean(RMSD_set[f"Binding Site {bs_id}"])
-
-    # Update dataset
-    self.dataset["Binding Site Pose RMSD"] = pose_rmsd_per_residue
-    pose_rmsd_data = pd.DataFrame(dict([(bs_label, pd.Series(rmsd_set))
-                                        for bs_label, rmsd_set in RMSD_set.items()]))
-
-    # Plot RMSD violin (lazy import to avoid GUI in workers)
-    if plot_rmsd and n_top_poses > 0 and not pose_rmsd_data.empty:
-        from ..plot import plot_binding_site_data  # lazy import
-        plot_binding_site_data(
-            pose_rmsd_data,
-            os.path.join(pose_dir, f"Pose_RMSD_violinplot.{fig_format}"),
-            title=f"{self._lipid}",
-            ylabel="RMSD (nm)",
-            fig_close=fig_close
+        r"""Analyze bound poses for binding sites.
+        
+        (Docstring unchanged — omitted here for brevity)
+        """
+        # Ensure required upstream steps are done
+        self._check_calculation("Binding Site ID", self.compute_binding_nodes, print_data=False)
+        
+        # Where to save pose outputs
+        pose_dir = check_dir(save_dir, "Bound_Poses_{}".format(self._lipid)) if save_dir is not None \
+            else check_dir(self._save_dir, "Bound_Poses_{}".format(self._lipid))
+        
+        # Initialize/extend per-residue RMSD column
+        if "Binding Site Pose RMSD" in self.dataset.columns:
+            pose_rmsd_per_residue = self.dataset["Binding Site Pose RMSD"].values
+        else:
+            pose_rmsd_per_residue = np.zeros(self._nresi_per_protein)
+        
+        # Which binding sites to process
+        if binding_site_id is not None:
+            selected_bs_id = np.atleast_1d(binding_site_id)
+        else:
+            selected_bs_id = np.arange(len(self._node_list), dtype=int)
+        
+        # Map of selected binding sites -> node lists
+        selected_bs_map = {bs_id: self._node_list[bs_id] for bs_id in selected_bs_id}
+        
+        # --- Heartbeat: announce pose collection --------------------------------
+        print(f"[PyLipID] Gathering bound poses for analysis…")
+        print(f"[PyLipID] Binding sites to analyse: {len(selected_bs_id)}")
+        
+        # Collect bound poses and metadata
+        pose_traj, pose_info = collect_bound_poses(
+            selected_bs_map,
+            self._contact_residues_low,
+            self._trajfile_list,
+            self._topfile_list,
+            self._lipid,
+            self._protein_ref,
+            self._lipid_ref,
+            stride=self._stride,
+            nprot=self._nprot
         )
-
-    return pose_traj, pose_rmsd_data
+        
+        # Quick per-site pose counts (helps reassure users on large jobs)
+        for bs_id in selected_bs_id:
+            try:
+                n_poses = len(pose_traj[bs_id])
+            except Exception:
+                n_poses = 0
+            print(f"[PyLipID] - Binding Site {bs_id}: {n_poses} poses")
+        
+        # Build atom index lists used by the analyzers
+        protein_atom_indices = [[atom.index for atom in residue.atoms]
+                                for residue in self._protein_ref.top.residues]
+        lipid_atom_indices = [self._protein_ref.n_atoms + atom_idx
+                              for atom_idx in np.arange(self._lipid_ref.n_atoms)]
+        
+        # Atom weights (default 1.0 each; allow user override by name)
+        atom_weights = {atom_idx: 1 for atom_idx in np.arange(self._lipid_ref.n_atoms)}
+        if score_weights is not None:
+            translate = {atom_idx: score_weights[self._lipid_ref.top.atom(atom_idx).name]
+                         for atom_idx in np.arange(self._lipid_ref.n_atoms)
+                         if self._lipid_Ref.top.atom(atom_idx).name in score_weights.keys()}
+            atom_weights.update(translate)
+        
+        RMSD_set = {}
+        
+        # If n_top_poses == 0, we skip the heavy scoring/clustering entirely
+        if n_top_poses > 0:
+            # --- Heartbeat: announce the heavy parallel step --------------------
+            # Number of workers actually used
+            import os
+            n_workers = num_cpus if (isinstance(num_cpus, int) and num_cpus > 0) else (os.cpu_count() or 1)
+            n_workers = min(n_workers, max(1, len(selected_bs_id)))
+            print(f"[PyLipID] Starting multiprocessing for bound pose scoring/clustering… "
+                  f"(sites={len(selected_bs_id)}, workers={n_workers})")
+            print(f"[PyLipID] Tip: reduce num_cpus or set n_top_poses=0 / n_clusters=0 to speed up.")
+        
+            # Prepare the task closure
+            task = partial(analyze_pose_wrapper,
+                           protein_atom_indices=protein_atom_indices,
+                           lipid_atom_indices=lipid_atom_indices,
+                           n_top_poses=n_top_poses,
+                           pose_dir=pose_dir,
+                           atom_weights=atom_weights,
+                           kde_bw=kde_bw,
+                           pca_component=pca_component,
+                           pose_format=pose_format,
+                           n_clusters=n_clusters,
+                           eps=eps,
+                           min_samples=min_samples,
+                           metric=metric,
+                           trajfile_list=self._trajfile_list)
+        
+            # Run in parallel with a visible tqdm progress bar
+            rmsd_set = _spawn_pmap(task,
+                                   selected_bs_id,
+                                   [pose_traj[bs_id] for bs_id in selected_bs_id],
+                                   [self._node_list[bs_id] for bs_id in selected_bs_id],
+                                   [pose_info[bs_id] for bs_id in selected_bs_id],
+                                   num_cpus=num_cpus,
+                                   desc="ANALYZE BOUND POSES")
+        
+            # Collect RMSD output per site and update per-residue RMSD column
+            for bs_id, rmsd in zip(selected_bs_id, rmsd_set):
+                RMSD_set[f"Binding Site {bs_id}"] = rmsd
+                pose_rmsd_per_residue[self._node_list[bs_id]] = np.mean(RMSD_set[f"Binding Site {bs_id}"])
+        
+        # Update dataset
+        self.dataset["Binding Site Pose RMSD"] = pose_rmsd_per_residue
+        pose_rmsd_data = pd.DataFrame(dict([(bs_label, pd.Series(rmsd_set))
+                                            for bs_label, rmsd_set in RMSD_set.items()]))
+        
+        # Plot RMSD violin (lazy import to avoid GUI in workers)
+        if plot_rmsd and n_top_poses > 0 and not pose_rmsd_data.empty:
+            from ..plot import plot_binding_site_data  # lazy import
+            plot_binding_site_data(
+                pose_rmsd_data,
+                os.path.join(pose_dir, f"Pose_RMSD_violinplot.{fig_format}"),
+                title=f"{self._lipid}",
+                ylabel="RMSD (nm)",
+                fig_close=fig_close
+            )
+        
+        return pose_traj, pose_rmsd_data
 
     def compute_surface_area(self, binding_site_id=None, radii=None, plot_data=True, save_dir=None,
                              fig_close=False, fig_format="pdf", num_cpus=None):
