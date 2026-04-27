@@ -65,7 +65,7 @@ Quick Start
            cutoffs=[0.55, 0.8],
            lipid="CHOL",
            nprot=1,
-           hpc=True,
+           # hpc=True, # parallel contact computations to run on LinuxOS cluster/workstation 
        )
        li.collect_residue_contacts()
        li.compute_residue_duration()
