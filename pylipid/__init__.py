@@ -19,10 +19,12 @@
 #   1) forcing multiprocessing to use 'spawn'
 #   2) preventing GUI backends from loading in worker processes
 import multiprocessing as _mp
+import sys
 
 try:
-    # Safe on macOS — harmless on Linux/Windows
-    _mp.set_start_method("spawn", force=True)
+    # only force spawn on macOS
+    if sys.platform == "darwin":
+        _mp.set_start_method("spawn", force=True)
 except RuntimeError:
     # Already set or protected — ignore
     pass

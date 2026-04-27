@@ -67,25 +67,33 @@ def init_worker(traj, lipid_residue_atomid_list):
 #  computationally heavy iterated work in collect_residue_contacts, parallised with multiprocessing
 def process_res(args):
     # args sent as tuple, initialised here
-    residue_atom_indices, cutoffs, ncol_start, ncol_per_protein, protein_idx, residue_id = args 
-    # loads global variables initialised in init_worker func 
+    residue_atom_indices, cutoffs, ncol_start, ncol_per_protein, protein_idx, residue_id, flat_lipid_atoms, lipid_boundaries = args 
+    # loads global variables initialised in init_worker func
     traj = _traj
     lipid_residue_atomid_list = _lipid_residue_atomid_list
-    # calculate interaction per residue  --  untouched from original api
-    dist_matrix = np.array([np.min(
-        md.compute_distances(traj, np.array(list(product(residue_atom_indices, lipid_atom_indices))),
-                                periodic=True, opt=True),
-        axis=1) for lipid_atom_indices in lipid_residue_atomid_list])
+    # Shape: (n_frames, n_residue_atoms * n_flat_lipid_atoms)
+    all_pairs = np.array(list(product(residue_atom_indices, flat_lipid_atoms)))
+    all_dists = md.compute_distances(traj, all_pairs, periodic=True, opt=True)
+    # all_dists shape: (n_frames, n_res_atoms * n_flat_lipid_atoms)
+    # Reduce to (n_frames, n_flat_lipid_atoms) by taking min over residue atoms
+    n_res_atoms = len(residue_atom_indices)
+    n_flat = len(flat_lipid_atoms)
+    # reshape: (n_frames, n_res_atoms, n_flat_lipid_atoms) → min over axis 1
+    per_atom_dists = all_dists.reshape(traj.n_frames, n_res_atoms, n_flat).min(axis=1)
+    # (n_frames, n_flat_lipid_atoms) → per lipid min using boundaries
+    # np.minimum.reduceat operates along axis=1 (columns = lipid atoms)
+    dist_matrix = np.minimum.reduceat(per_atom_dists, lipid_boundaries[:-1], axis=1).T
+    # dist_matrix shape: (n_lipids, n_frames) — same as before
     contact_low, frame_id_set_low, lipid_id_set_low = cal_contact_residues(dist_matrix, cutoffs[0])
     contact_high, _, _ = cal_contact_residues(dist_matrix, cutoffs[1])
-    # data appended after parallelisation
+    # update coordinates for coo_matrix
     _col = [ncol_start + ncol_per_protein * protein_idx + lipid_id * traj.n_frames +
                 frame_id for frame_id, lipid_id in zip(frame_id_set_low, lipid_id_set_low)]
-    _row = [residue_id] * len(frame_id_set_low)
+    _row = [residue_id for dummy in np.arange(len(frame_id_set_low), dtype=int)]
     _data = dist_matrix[lipid_id_set_low, frame_id_set_low]
+    #return
     return residue_id, contact_low, contact_high, _col, _row, _data
-
-
+   
 class LipidInteraction:
     def __init__(self, trajfile_list, cutoffs=[0.475, 0.7], lipid="CHOL", topfile_list=None, lipid_atoms=None,
                  nprot=1, resi_offset=0, save_dir=None, timeunit="us", stride=1, dt_traj=None, num_cpus=None, hpc=False):
@@ -434,10 +442,11 @@ class LipidInteraction:
                     # ---- TODO: debug this for windows/macOS system
                     # creates list of (residue,(residue atoms), ...) to analyse, with args for global func process_res  
                     to_process = [
-                        (residue_atom_indices, self._cutoffs, ncol_start, ncol_per_protein, protein_idx, residue_id)
+                        (residue_atom_indices, self._cutoffs, ncol_start, ncol_per_protein, protein_idx, residue_id, flat_lipid_atoms, lipid_boundaries)
                         for residue_id, residue_atom_indices in enumerate(traj_info["protein_residue_atomid_list"][protein_idx])
                     ]
                     # sets linux process/memory management (fork instead of spawn)
+                    # ---- may work on macOS since UNIX?
                     ctx = get_context("fork")
                     # initialises #num_cpus parallel threads, init_worker function called once per thread at initialisation, sets global traj so it isn't passed every iteration
                     with ctx.Pool(processes=self._num_cpus, initializer=init_worker, initargs=(traj, traj_info["lipid_residue_atomid_list"])) as pool:
@@ -536,7 +545,8 @@ class LipidInteraction:
             Calculate contact durations from lipid index.
 
         """
-        self._check_calculation("Residue", self.collect_residue_contacts)
+        if (self._hpc == False):
+            self._check_calculation("Residue", self.collect_residue_contacts)
         if residue_id is None:
             selected_residue_id = self._protein_residue_id
         else:
@@ -590,7 +600,8 @@ class LipidInteraction:
             Calculate the percentage of frames in which a contact is formed.
 
         """
-        self._check_calculation("Residue", self.collect_residue_contacts)
+        if (self._hpc ==  False):
+            self._check_calculation("Residue", self.collect_residue_contacts)
         if residue_id is None:
             selected_residue_id = self._protein_residue_id
         else:
@@ -643,7 +654,8 @@ class LipidInteraction:
             Calculate the average number of contacting molecules.
 
         """
-        self._check_calculation("Residue", self.collect_residue_contacts)
+        if (self._hpc ==  False):
+            self._check_calculation("Residue", self.collect_residue_contacts)
         if residue_id is None:
             selected_residue_id = self._protein_residue_id
         else:
