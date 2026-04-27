@@ -58,28 +58,28 @@ Quick Start
     trajfile_list = ["run1/protein_lipids.xtc", "run2/protein_lipids.xtc"]
     topfile_list  = ["run1/protein_lipids.gro", "run2/protein_lipids.gro"]
 
-def main():
-    li = LipidInteraction(
-        trajfile_list,
-        topfile_list=topfile_list,
-        cutoffs=[0.55, 0.8],
-        lipid="CHOL",
-        nprot=1,
-        hpc=True,
-    )
-    li.collect_residue_contacts()
-    li.compute_residue_duration()
-    li.compute_residue_koff()
-    li.compute_binding_nodes(threshold=4)
-    li.compute_site_koff()
-
-    li.plot("Residence Time")
-    li.save_data("Dataset")
-    li.save_pymol_script(pdb_file="receptor.pdb")
-
-if __name__ == "__main__":
-    main()
-
+   def main():
+       li = LipidInteraction(
+           trajfile_list,
+           topfile_list=topfile_list,
+           cutoffs=[0.55, 0.8],
+           lipid="CHOL",
+           nprot=1,
+           hpc=True,
+       )
+       li.collect_residue_contacts()
+       li.compute_residue_duration()
+       li.compute_residue_koff()
+       li.compute_binding_nodes(threshold=4)
+       li.compute_site_koff()
+   
+       li.plot("Residence Time")
+       li.save_data("Dataset")
+       li.save_pymol_script(pdb_file="receptor.pdb")
+   
+   if __name__ == "__main__":
+       main()
+   
 
 What's New in v1.6.0
 ====================
