@@ -39,7 +39,7 @@ from ..plot import plot_surface_area, plot_binding_site_data
 from ..plot import plot_residue_data, plot_corrcoef, plot_residue_data_logo
 from ..util import check_dir, write_PDB, write_pymol_script, sparse_corrcoef, get_traj_info
 
-from multiprocessing import cpu_count, Pool
+import multiprocessing as mprc 
 
 
 
@@ -430,17 +430,17 @@ class LipidInteraction:
             n_lipids = len(traj_info["lipid_residue_atomid_list"])
             for protein_idx in np.arange(self._nprot, dtype=int):
                 if (self._hpc):
-                    # parallelised computation for hpc or linux OS workstation (
-                    # -- linux OS handles memory allocation/process generation differently to windows, no idea about macOS (should  be similar to linux??),
-                    # ---- so this method will probably not work on other OS systems, may be worth debugging, but unlikely to be worthwile? but should be possible
-                    print("DEBUG - HPC MODE")
+                    # parallelised computation for linux OS hpc or workstation 
+                    # ---- TODO: debug this for windows/macOS system
                     # creates list of (residue,(residue atoms), ...) to analyse, with args for global func process_res  
                     to_process = [
                         (residue_atom_indices, self._cutoffs, ncol_start, ncol_per_protein, protein_idx, residue_id)
                         for residue_id, residue_atom_indices in enumerate(traj_info["protein_residue_atomid_list"][protein_idx])
                     ]
+                    # sets linux process/memory management (fork instead of spawn)
+                    ctx = get_context("fork")
                     # initialises #num_cpus parallel threads, init_worker function called once per thread at initialisation, sets global traj so it isn't passed every iteration
-                    with Pool(processes=self._num_cpus, initializer=init_worker, initargs=(traj, traj_info["lipid_residue_atomid_list"])) as pool:
+                    with ctx.Pool(processes=self._num_cpus, initializer=init_worker, initargs=(traj, traj_info["lipid_residue_atomid_list"])) as pool:
                         # equivalent of openMP for, calling global func process_res as iteratable, chunksize 1 is ~~close to schedule dynamic 
                         results = pool.map(process_res, to_process, chunksize=1) 
                     # serialise results from parallel computation
@@ -457,7 +457,6 @@ class LipidInteraction:
                             tqdm(traj_info["protein_residue_atomid_list"][protein_idx],
                                 desc="  Traj {:d} prot {:d} residues".format(traj_idx, protein_idx),
                                 leave=False)):
-                        print("DEBUG - NON-HPC MODE")
                         # Single compute_distances call for all lipid atoms at once.
                         # Shape: (n_frames, n_residue_atoms * n_flat_lipid_atoms)
                         all_pairs = np.array(list(product(residue_atom_indices, flat_lipid_atoms)))
