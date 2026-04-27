@@ -63,8 +63,6 @@ def init_worker(traj, lipid_residue_atomid_list):
     global _traj, _lipid_residue_atomid_list
     _traj = traj
     _lipid_residue_atomid_list = lipid_residue_atomid_list
-
-#  computationally heavy iterated work in collect_residue_contacts, parallised with multiprocessing
 def process_res(args):
     # args sent as tuple, initialised here
     residue_atom_indices, cutoffs, ncol_start, ncol_per_protein, protein_idx, residue_id, flat_lipid_atoms, lipid_boundaries = args 
