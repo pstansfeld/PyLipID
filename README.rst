@@ -53,10 +53,10 @@ Quick Start
 
 .. code-block:: python
 
-    from pylipid.api import LipidInteraction
+   from pylipid.api import LipidInteraction
 
-    trajfile_list = ["run1/protein_lipids.xtc", "run2/protein_lipids.xtc"]
-    topfile_list  = ["run1/protein_lipids.gro", "run2/protein_lipids.gro"]
+   trajfile_list = ["run1/protein_lipids.xtc", "run2/protein_lipids.xtc"]
+   topfile_list  = ["run1/protein_lipids.gro", "run2/protein_lipids.gro"]
 
    def main():
        li = LipidInteraction(
