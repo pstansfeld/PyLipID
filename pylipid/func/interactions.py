@@ -157,7 +157,7 @@ def cal_occupancy(contact_list):
 
     Returns
     -------
-    Ocupancy : scalar
+    Occupancy : scalar
         The percentage of frames in which a contact is formed
 
     Examples
